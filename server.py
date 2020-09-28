@@ -14,7 +14,7 @@ def get_user_permission(user):
 
 @app.route('/permission/<string:user>/<int:permission>', methods=['POST'])
 def set_user_permission(user, permission):
-    if permission > 2:
+    if permission >= 2:
         return "Invalid permission, 0 or 1"
     if request.method == 'POST':
         users[user] = permission
@@ -22,4 +22,4 @@ def set_user_permission(user, permission):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='192.168.0.42', port=3010)
+    app.run(debug=True, host='192.168.0.42', port=3011)

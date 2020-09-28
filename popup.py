@@ -1,6 +1,6 @@
 from tkinter import *
 import tkinter.messagebox
-import configparser
+#import configparser
 
 def show_popup(message):
     root = Tk()
@@ -8,7 +8,7 @@ def show_popup(message):
     root.mainloop()
 
 if __name__ == '__main__':
-    config = configparser.ConfigParser()
-    config.read('app-blocker.conf')
-    motd = config.get('Settings', 'motd')
-    show_popup(motd)
+    #config = configparser.ConfigParser()
+    #config.read('app-blocker.conf')
+    #motd = config.get('Settings', 'motd')
+    show_popup('Get back to work!')
