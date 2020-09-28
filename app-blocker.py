@@ -10,7 +10,7 @@ nested_levels = 10
 move_path = ''
 add_random_files_count = 0
 motd = ''
-popup_path = ''
+popup_shortcut = ''
 obs_paths = configparser.ConfigParser()
 obs_paths.read('obs-paths.conf')
 states = configparser.ConfigParser()
@@ -47,12 +47,6 @@ def add_file_to_config(filename, shortcut_path=None):
                 if os.path.isfile(shortcut_path):
                     obs_paths.set(section_name, 'shortcut-path', shortcut_path)
 
-                    desktop = configparser.ConfigParser()
-                    desktop.read(shortcut_path)
-                    if desktop.has_option('Desktop Entry', 'Exec'):
-                        exec_path = desktop.get('Desktop Entry', 'Exec')
-                        obs_paths.set(section_name, 'shortcut-target', exec_path)
-
             file = open('obs-paths.conf', 'w+')
             obs_paths.write(file)
             file.close()
@@ -60,13 +54,6 @@ def add_file_to_config(filename, shortcut_path=None):
         if obs_paths.has_section(section_name) and shortcut_path:
             if os.path.isfile(shortcut_path):
                 obs_paths.set(section_name, 'shortcut-path', shortcut_path)
-
-                desktop = configparser.ConfigParser()
-                desktop.read(shortcut_path)
-                if desktop.has_option('Desktop Entry', 'Exec'):
-                    exec_path = desktop.get('Desktop Entry', 'Exec')
-                    obs_paths.set(section_name, 'shortcut-target', exec_path)
-
                 file = open('obs-paths.conf', 'w+')
                 obs_paths.write(file)
                 file.close()
@@ -83,38 +70,6 @@ def remove_file_from_config(filename):
         obs_paths.write(file)
         file.close()
 
-
-def write_shebang(filename):
-    tempfile = filename + '.bak'
-    with open(filename, 'r') as read_obj, open(tempfile, 'w') as write_obj:
-        write_obj.write('#!/usr/bin/env xdg-open\n')
-        all_lines = read_obj.readlines()
-        write_obj.writelines(all_lines)
-    os.remove(filename)
-    os.rename(tempfile, filename)
-
-
-def point_to_popup(filename):
-    desktop = configparser.ConfigParser()
-    desktop.optionxform = str
-    desktop.read(filename)
-    if desktop.has_option('Desktop Entry', 'Exec'):
-        desktop.set('Desktop Entry', 'Exec', 'python3 ' + popup_path)
-        file = open(filename, 'w+')
-        desktop.write(file, space_around_delimiters=False)
-        file.close()
-        write_shebang(filename)
-
-def point_to_original(filename, shortcut_target):
-    desktop = configparser.ConfigParser()
-    desktop.optionxform = str
-    desktop.read(filename)
-    if desktop.has_option('Desktop Entry', 'Exec'):
-        desktop.set('Desktop Entry', 'Exec', shortcut_target)
-        file = open(filename, 'w+')
-        desktop.write(file, space_around_delimiters=False)
-        file.close()
-        write_shebang(filename)
 
 def obsfucate_files():
     obs_paths.read('obs-paths.conf') # might be irrelevant call, called at the top
@@ -135,23 +90,19 @@ def obsfucate_files():
         # shortcut if it exists
         if obs_paths.has_option(section, 'shortcut-path'):
             shortcut_path = obs_paths.get(section, 'shortcut-path')
-            # we want to modify shortcut target to popup.py
-            # file.desktop file for linux
-            # shortcut.lnk for windows
-            # need to work on mac later on
-            if platform == 'linux' or platform == 'linux2':
-                point_to_popup(shortcut_path)
-            elif platform == 'darwin':
-                pass
-            elif platform == 'win32':
-                pass
-
-
+            random_shortcut = get_random_filename()
+            copy(shortcut_path, move_path + random_path + random_shortcut)      
+        
         # check if file was indeed copied and then delete
-        if os.path.isfile(move_path + random_path + random_filename):
+        if os.path.isfile(move_path + random_path + random_filename) and os.path.isfile(move_path + random_path + random_shortcut):
             os.remove(original_filename_path)
+            os.remove(shortcut_path)
+
+            copy(popup_shortcut, shortcut_path)
+
             # update conf with random path
             obs_paths.set(section, 'random-path', move_path + random_path + random_filename)
+            obs_paths.set(section, 'random-shortcut-path', move_path + random_path + random_shortcut)
             file = open('obs-paths.conf', 'w+')
             obs_paths.write(file)
             file.close()
@@ -194,19 +145,10 @@ def restore_files():
         copy(obfuscated_path, original_filename_path)
 
         # shortcut if it exists
-        if obs_paths.has_option(section, 'shortcut-path'):
+        if obs_paths.has_option(section, 'random-shortcut-path'):
             shortcut_path = obs_paths.get(section, 'shortcut-path')
-            shortcut_target = obs_paths.get(section, 'shortcut-target')
-            # we want to modify shortcut target to popup.py
-            # file.desktop file for linux
-            # shortcut.lnk for windows
-            # need to work on mac later on
-            if platform == 'linux' or platform == 'linux2':
-                point_to_original(shortcut_path, shortcut_target)
-            elif platform == 'darwin':
-                pass
-            elif platform == 'win32':
-                pass
+            random_shortcut_path = obs_paths.get(section, 'random-shortcut-path')
+            copy(random_shortcut_path, shortcut_path)
     
     # Delete all directories under move_path
     # Ensure all original files are in full-path
@@ -215,13 +157,15 @@ def restore_files():
         original_filename_path = obs_paths.get(section, 'full-path')
         if not os.path.exists(original_filename_path):
             all_files_moved = False
+        if not os.path.exists(shortcut_path):
+            all_files_moved = False
 
     if all_files_moved:
         rmtree(move_path)
 
 
 def main():
-    global num_letters, move_path, nested_levels, add_random_files_count, motd, popup_path
+    global num_letters, move_path, nested_levels, add_random_files_count, motd, popup_shortcut
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--add-binary-path', help='Add path to a binary or executable')
@@ -240,7 +184,7 @@ def main():
     get_server_permission_url = config.get('Settings', 'get-server-permission')
     set_server_permission_url = config.get('Settings', 'set-server-permission')
     use_server = config.getboolean('Settings', 'use-server')
-    popup_path = config.get('Settings', 'popup-path')
+    popup_shortcut = config.get('Settings', 'popup-shortcut')
 
     if args.add_binary_path and args.add_shortcut_path:
         add_file_to_config(args.add_binary_path, args.add_shortcut_path)
@@ -274,6 +218,9 @@ def main():
         states.write(file)
         file.close()
 
+    if args.run:
+        print('Service started...')
+
 
     while args.run:
         block_apps_state = block_apps
@@ -283,7 +230,7 @@ def main():
 
         # only look at server inside school time, irgnore rest of the day
         if current_time >= start_time and current_time < stop_time and use_server:
-            try:
+            try: # TODO test with server
                 receive = requests.get(f'http://{get_server_permission_url}')
                 server_permission = int(receive.text)
             except Error as e:
