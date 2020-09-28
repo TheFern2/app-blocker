@@ -2,7 +2,7 @@ import requests, argparse, string, random, configparser, os, random
 from pathlib import Path
 from shutil import copy, rmtree
 import datetime, time
-from sys import platform
+import platform
 
 # global variables
 num_letters = 1
@@ -34,7 +34,7 @@ def get_random_filename():
         random_filename += curr_letter
     return random_filename
 
-def add_file_to_config(filename, shortcut_path=None):
+def add_file_to_config(filename, shortcut_path=None, popup=False):
     if os.path.isfile(filename):
         # check if filename is in obs-paths.conf
         section_name = os.path.basename(filename)
@@ -43,7 +43,7 @@ def add_file_to_config(filename, shortcut_path=None):
             obs_paths.set(section_name, 'full-path', filename)
             obs_paths.set(section_name, 'file-size-bytes', str(os.path.getsize(filename)))
 
-            if shortcut_path:
+            if shortcut_path and platform.system() != 'Darwin': # shortcuts not supported for mac 
                 if os.path.isfile(shortcut_path):
                     obs_paths.set(section_name, 'shortcut-path', shortcut_path)
 
@@ -57,6 +57,12 @@ def add_file_to_config(filename, shortcut_path=None):
                 file = open('obs-paths.conf', 'w+')
                 obs_paths.write(file)
                 file.close()
+
+        if obs_paths.has_section(section_name) and platform.system() == 'Darwin' and popup:
+            obs_paths.set(section_name, 'show-popup', str('True'))
+            file = open('obs-paths.conf', 'w+')
+            obs_paths.write(file)
+            file.close()
 
     else:
         print('File does not exist')
@@ -87,22 +93,23 @@ def obsfucate_files():
             os.makedirs(move_path + random_path)
         copy(original_filename_path, move_path + random_path + random_filename)
 
-        # shortcut if it exists
-        if obs_paths.has_option(section, 'shortcut-path'):
+        # shortcut if it exists, and not mac osx
+        if obs_paths.has_option(section, 'shortcut-path') and platform.system() != 'Darwin':
             shortcut_path = obs_paths.get(section, 'shortcut-path')
             random_shortcut = get_random_filename()
-            copy(shortcut_path, move_path + random_path + random_shortcut)      
+            copy(shortcut_path, move_path + random_path + random_shortcut)
+            # check if file was indeed copied and then delete
+            if os.path.isfile(move_path + random_path + random_shortcut):
+                os.remove(shortcut_path)
+                copy(popup_shortcut, shortcut_path)
+                obs_paths.set(section, 'random-shortcut-path', move_path + random_path + random_shortcut)     
         
         # check if file was indeed copied and then delete
-        if os.path.isfile(move_path + random_path + random_filename) and os.path.isfile(move_path + random_path + random_shortcut):
+        if os.path.isfile(move_path + random_path + random_filename):
             os.remove(original_filename_path)
-            os.remove(shortcut_path)
-
-            copy(popup_shortcut, shortcut_path)
 
             # update conf with random path
             obs_paths.set(section, 'random-path', move_path + random_path + random_filename)
-            obs_paths.set(section, 'random-shortcut-path', move_path + random_path + random_shortcut)
             file = open('obs-paths.conf', 'w+')
             obs_paths.write(file)
             file.close()
@@ -134,10 +141,10 @@ def add_random_files():
                 fout.write(os.urandom(random.randrange(obfuscated_size)))
     
 
-
 def restore_files():
     obs_paths.read('obs-paths.conf')
     obs_sections = obs_paths.sections()
+    all_files_moved = True
     # print(len(obs_sections))
     for section in obs_sections:
         original_filename_path = obs_paths.get(section, 'full-path')
@@ -149,16 +156,16 @@ def restore_files():
             shortcut_path = obs_paths.get(section, 'shortcut-path')
             random_shortcut_path = obs_paths.get(section, 'random-shortcut-path')
             copy(random_shortcut_path, shortcut_path)
+
+            if not os.path.exists(shortcut_path):
+                all_files_moved = False
     
     # Delete all directories under move_path
     # Ensure all original files are in full-path
-    all_files_moved = True
     for section in obs_sections:
         original_filename_path = obs_paths.get(section, 'full-path')
         if not os.path.exists(original_filename_path):
-            all_files_moved = False
-        if not os.path.exists(shortcut_path):
-            all_files_moved = False
+            all_files_moved = False        
 
     if all_files_moved:
         rmtree(move_path)
@@ -188,9 +195,9 @@ def main():
 
     if args.add_binary_path and args.add_shortcut_path:
         add_file_to_config(args.add_binary_path, args.add_shortcut_path)
-    if args.add_binary_path:
+    elif args.add_binary_path:
         add_file_to_config(args.add_binary_path)
-    if args.remove_binary_path:
+    elif args.remove_binary_path:
         remove_file_from_config(args.remove_binary_path)
 
     obs_sections = obs_paths.sections()
@@ -230,13 +237,13 @@ def main():
 
         # only look at server inside school time, irgnore rest of the day
         if current_time >= start_time and current_time < stop_time and use_server:
-            try: # TODO test with server
+            try:
                 receive = requests.get(f'http://{get_server_permission_url}')
                 server_permission = int(receive.text)
-            except Error as e:
-                print('Server not online!')
+            except requests.exceptions.RequestException as e:
+                raise SystemExit(f'Server not online, make sure is online or disable in config!\n{e}')
 
-        if current_time >= start_time and current_time < stop_time and not obsfucation_ran or server_permission == 0 and not obsfucation_ran: # add OR for server status
+        if current_time >= start_time and current_time < stop_time and not obsfucation_ran or server_permission == 0 and not obsfucation_ran:
             # print('Block apps ' + str(current_time))
             add_random_files()
             block_apps = True

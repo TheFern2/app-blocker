@@ -22,4 +22,4 @@ def set_user_permission(user, permission):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='192.168.0.42', port=3011)
+    app.run(debug=True, host='192.168.0.42', port=3012)

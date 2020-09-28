@@ -1,14 +1,11 @@
 from tkinter import *
 import tkinter.messagebox
-#import configparser
 
 def show_popup(message):
     root = Tk()
+    root.wm_withdraw()
     tkinter.messagebox.showinfo('Message of the day', message)
-    root.mainloop()
+    root.destroy()
 
 if __name__ == '__main__':
-    #config = configparser.ConfigParser()
-    #config.read('app-blocker.conf')
-    #motd = config.get('Settings', 'motd')
     show_popup('Get back to work!')
