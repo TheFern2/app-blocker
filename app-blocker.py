@@ -179,6 +179,7 @@ def main():
     parser.add_argument('--remove-binary-path', help='Remove path to a binary or executable')
     parser.add_argument('--add-shortcut-path')
     parser.add_argument('--run', action='store_true')
+    parser.add_argument('--recover', action='store_true')
     args = parser.parse_args()
 
     config = configparser.ConfigParser()
@@ -199,6 +200,8 @@ def main():
         add_file_to_config(args.add_binary_path)
     elif args.remove_binary_path:
         remove_file_from_config(args.remove_binary_path)
+    elif args.recover:
+        restore_files()
 
     obs_sections = obs_paths.sections()
     if len(obs_sections) == 0:
@@ -227,6 +230,11 @@ def main():
 
     if args.run:
         print('Service started...')
+        # do not obsfuscate if move_path folder exists and is not empty
+        # check if file exists and if it has section then read state
+        if os.path.exists(move_path):
+            print('Move path exists, please run recover command.')
+            exit()
 
 
     while args.run:
@@ -240,14 +248,13 @@ def main():
             try:
                 receive = requests.get(f'http://{get_server_permission_url}')
                 server_permission = int(receive.text)
-            except requests.exceptions.RequestException as e:
-                raise SystemExit(f'Server not online, make sure is online or disable in config!\n{e}')
+            except requests.exceptions.RequestException:
+                print(f'Server not online, make sure is online or disable in config!')
 
         if current_time >= start_time and current_time < stop_time and not obsfucation_ran or server_permission == 0 and not obsfucation_ran:
-            # print('Block apps ' + str(current_time))
             add_random_files()
-            block_apps = True
             obsfucate_files()
+            block_apps = True
             obsfucation_ran = True
             # update states
             states.read('states.conf')
@@ -269,9 +276,8 @@ def main():
             states.write(file)
             file.close()
 
-        if current_time == stop_time + 1:
-            if use_server:
-                r = requests.post(f'http://{set_server_permission_url}0')
+        if current_time == stop_time + 1 and use_server:
+            requests.post(f'http://{set_server_permission_url}0')
 
         # only log if there is a change
         if block_apps != block_apps_state:

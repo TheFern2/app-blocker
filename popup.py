@@ -1,8 +1,8 @@
-from tkinter import *
+from tkinter import Tk
 import tkinter.messagebox
 
 def show_popup(message):
-    root = Tk()
+    root = tkinter.Tk()
     root.wm_withdraw()
     tkinter.messagebox.showinfo('Message of the day', message)
     root.destroy()
