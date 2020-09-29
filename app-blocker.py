@@ -34,7 +34,7 @@ def get_random_filename():
         random_filename += curr_letter
     return random_filename
 
-def add_file_to_config(filename, shortcut_path=None, popup=False):
+def add_file_to_config(filename, shortcut_path=None):
     if os.path.isfile(filename):
         # check if filename is in obs-paths.conf
         section_name = os.path.basename(filename)
@@ -57,13 +57,6 @@ def add_file_to_config(filename, shortcut_path=None, popup=False):
                 file = open('obs-paths.conf', 'w+')
                 obs_paths.write(file)
                 file.close()
-
-        if obs_paths.has_section(section_name) and platform.system() == 'Darwin' and popup:
-            obs_paths.set(section_name, 'show-popup', str('True'))
-            file = open('obs-paths.conf', 'w+')
-            obs_paths.write(file)
-            file.close()
-
     else:
         print('File does not exist')
 
