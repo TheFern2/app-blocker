@@ -3,18 +3,25 @@ from pathlib import Path
 from shutil import copy, rmtree
 import datetime, time
 import platform
+import psutil
+from tkinter import Tk
+import tkinter.messagebox
 
 # global variables
 num_letters = 1
 nested_levels = 10
 move_path = ''
 add_random_files_count = 0
-motd = ''
 popup_shortcut = ''
 obs_paths = configparser.ConfigParser()
 obs_paths.read('obs-paths.conf')
 states = configparser.ConfigParser()
 
+def show_popup(message):
+    root = tkinter.Tk()
+    root.wm_withdraw()
+    tkinter.messagebox.showwarning('App Blocker Warning', message)
+    root.destroy()
 
 def get_random_path():
     random_path = '/'
@@ -34,7 +41,7 @@ def get_random_filename():
         random_filename += curr_letter
     return random_filename
 
-def add_file_to_config(filename, shortcut_path=None):
+def add_file_to_config(filename, extra_bin=None, attached_bin=None, shortcut_path=None):
     if os.path.isfile(filename):
         # check if filename is in obs-paths.conf
         section_name = os.path.basename(filename)
@@ -42,6 +49,11 @@ def add_file_to_config(filename, shortcut_path=None):
             obs_paths.add_section(section_name)
             obs_paths.set(section_name, 'full-path', filename)
             obs_paths.set(section_name, 'file-size-bytes', str(os.path.getsize(filename)))
+
+            if extra_bin:
+                obs_paths.set(section_name, 'extra-bin', extra_bin)
+            if attached_bin:
+                obs_paths.set(section_name, 'attached-bin', attached_bin)
 
             if shortcut_path and platform.system() != 'Darwin': # shortcuts not supported for mac 
                 if os.path.isfile(shortcut_path):
@@ -51,9 +63,13 @@ def add_file_to_config(filename, shortcut_path=None):
             obs_paths.write(file)
             file.close()
 
-        if obs_paths.has_section(section_name) and shortcut_path:
+        if obs_paths.has_section(section_name) and shortcut_path and platform.system() != 'Darwin':
             if os.path.isfile(shortcut_path):
                 obs_paths.set(section_name, 'shortcut-path', shortcut_path)
+                if extra_bin:
+                    obs_paths.set(section_name, 'extra-bin', extra_bin)
+                if attached_bin:
+                    obs_paths.set(section_name, 'attached-bin', attached_bin)
                 file = open('obs-paths.conf', 'w+')
                 obs_paths.write(file)
                 file.close()
@@ -70,12 +86,54 @@ def remove_file_from_config(filename):
         file.close()
 
 
+def find_process_pid(process_name, keyword=None):
+    proc_found = False
+    procs = {p.pid: p.info for p in psutil.process_iter(['pid','name'])}
+    for proc in procs:
+        if process_name in procs[proc]['name'] and not keyword:
+            return procs[proc]['pid']
+        if process_name in procs[proc]['name'] and keyword:
+            process_pid = psutil.Process(procs[proc]['pid'])
+            pid_files_open = process_pid.open_files()
+            for one_file in pid_files_open:
+                if keyword in one_file.path:
+                    return procs[proc]['pid'] 
+    if not proc_found:
+        return -1
+
+
 def obsfucate_files():
     obs_paths.read('obs-paths.conf') # might be irrelevant call, called at the top
     obs_sections = obs_paths.sections()
     # print(f"Number of sections in obs-paths {len(obs_sections)}")
     for section in obs_sections:
         original_filename_path = obs_paths.get(section, 'full-path')
+
+        ######### TESTING ###########
+        # check if binary process is active i.e running
+        # give user 3 minutes to exit
+        # then continue obsfucation
+        binary_name = os.path.basename(original_filename_path)
+        main_binary_pid = find_process_pid(binary_name)
+
+        # check here for extra binaries or attach binaries
+        # ['binary|obsfuscate(bool)] <- extra-bin
+        # ['binary|keyword|obsfuscate(bool)] <- attached-bin
+
+        # test variable
+        attached_bin = find_process_pid('java', 'minecraft')
+
+        print(f'Binary PID {main_binary_pid} Attached PID {attached_bin}')
+
+        if main_binary_pid != -1 or attached_bin != -1:
+            # show popup for user to exit program
+            show_popup('Please save games, games will be exiting in 3 minutes')
+            time.sleep(180)
+            proc_one = psutil.Process(main_binary_pid).kill()
+            proc_two = psutil.Process(attached_bin).kill()
+
+        ################################
+
         random_filename = get_random_filename()
         random_path = get_random_path()
 
@@ -165,12 +223,14 @@ def restore_files():
 
 
 def main():
-    global num_letters, move_path, nested_levels, add_random_files_count, motd, popup_shortcut
+    global num_letters, move_path, nested_levels, add_random_files_count, popup_shortcut
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--add-binary-path', help='Add path to a binary or executable')
     parser.add_argument('--remove-binary-path', help='Remove path to a binary or executable')
     parser.add_argument('--add-shortcut-path')
+    parser.add_argument('--add-extra-binaries', help='Extra processes spawned by main binary, i.e. \'binary|obsfuscate(bool)\',...')
+    parser.add_argument('--add-attached-binaries', help='Extra system processes spawned by main binary, i.e. \'binary|keyword|obsfuscate(bool)\',...')
     parser.add_argument('--run', action='store_true')
     parser.add_argument('--recover', action='store_true')
     args = parser.parse_args()
@@ -187,8 +247,19 @@ def main():
     use_server = config.getboolean('Settings', 'use-server')
     popup_shortcut = config.get('Settings', 'popup-shortcut')
 
+    # cli arguments input getting messy :(
+    # extra binaries and attached + breaks
+    # might be better just as config parameters and not cli
+    if args.add_binary_path and args.add_extra_binaries and args.add_attached_binaries and args.add_shortcut_path:
+        add_file_to_config(args.add_binary_path, args.add_extra_binaries, args.add_attached_binaries, args.add_shortcut_path)
+    if args.add_binary_path and args.add_extra_binaries and args.add_attached_binaries:
+        add_file_to_config(args.add_binary_path, args.add_extra_binaries, args.add_attached_binaries, None)
+    if args.add_binary_path and args.add_attached_binaries:
+        add_file_to_config(args.add_binary_path, None, args.add_attached_binaries, None)
+    if args.add_binary_path and args.add_extra_binaries:
+        add_file_to_config(args.add_binary_path, args.add_extra_binaries, None, None)
     if args.add_binary_path and args.add_shortcut_path:
-        add_file_to_config(args.add_binary_path, args.add_shortcut_path)
+        add_file_to_config(args.add_binary_path, None, None, args.add_shortcut_path)
     elif args.add_binary_path:
         add_file_to_config(args.add_binary_path)
     elif args.remove_binary_path:
