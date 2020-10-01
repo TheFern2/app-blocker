@@ -41,7 +41,30 @@ def get_random_filename():
         random_filename += curr_letter
     return random_filename
 
-def add_file_to_config(filename, extra_bin=None, attached_bin=None, shortcut_path=None):
+def split_parameters(input):
+    list_parameters = []
+    first_split = input.split(',')
+    for params in first_split:
+        second_split = params.split('|')
+        temp_list = []
+        for param in second_split:            
+            temp_list.append(param)
+        list_parameters.append(temp_list)
+    return list_parameters
+
+
+# time slot is a list, list[0] starting time, and list[1] ending time
+def are_you_on_break(current_time, time_slot):
+    starting_break = int(time_slot[0])
+    ending_break = int(time_slot[1])
+    if current_time >= starting_break and current_time <= ending_break:
+        return True
+    else:
+        return False
+
+# extra binaries will be special cases, so better to be added manually to config
+# def add_file_to_config(filename, extra_bin=None, attached_bin=None, shortcut_path=None):
+def add_file_to_config(filename, shortcut_path=None):
     if os.path.isfile(filename):
         # check if filename is in obs-paths.conf
         section_name = os.path.basename(filename)
@@ -49,11 +72,6 @@ def add_file_to_config(filename, extra_bin=None, attached_bin=None, shortcut_pat
             obs_paths.add_section(section_name)
             obs_paths.set(section_name, 'full-path', filename)
             obs_paths.set(section_name, 'file-size-bytes', str(os.path.getsize(filename)))
-
-            if extra_bin:
-                obs_paths.set(section_name, 'extra-bin', extra_bin)
-            if attached_bin:
-                obs_paths.set(section_name, 'attached-bin', attached_bin)
 
             if shortcut_path and platform.system() != 'Darwin': # shortcuts not supported for mac 
                 if os.path.isfile(shortcut_path):
@@ -66,10 +84,7 @@ def add_file_to_config(filename, extra_bin=None, attached_bin=None, shortcut_pat
         if obs_paths.has_section(section_name) and shortcut_path and platform.system() != 'Darwin':
             if os.path.isfile(shortcut_path):
                 obs_paths.set(section_name, 'shortcut-path', shortcut_path)
-                if extra_bin:
-                    obs_paths.set(section_name, 'extra-bin', extra_bin)
-                if attached_bin:
-                    obs_paths.set(section_name, 'attached-bin', attached_bin)
+        
                 file = open('obs-paths.conf', 'w+')
                 obs_paths.write(file)
                 file.close()
@@ -113,24 +128,78 @@ def obsfucate_files():
         # check if binary process is active i.e running
         # give user 3 minutes to exit
         # then continue obsfucation
+        is_main_binary_running = False
+        is_extra_binary_running = False
+        is_attached_binary_running = False
         binary_name = os.path.basename(original_filename_path)
         main_binary_pid = find_process_pid(binary_name)
 
         # check here for extra binaries or attach binaries
-        # ['binary|obsfuscate(bool)] <- extra-bin
+        # ['binary|obsfuscate 0 or 1(bool)] <- extra-bin
         # ['binary|keyword|obsfuscate(bool)] <- attached-bin
 
         # test variable
-        attached_bin = find_process_pid('java', 'minecraft')
+        #attached_bin = find_process_pid('java', 'minecraft')
+        
+        #print(f'Binary PID {main_binary_pid} Attached PID {attached_bin}')
+        ## Check if main binary, extra or attached binaries are running
 
-        print(f'Binary PID {main_binary_pid} Attached PID {attached_bin}')
+        if main_binary_pid != -1:
+            is_main_binary_running = True
+            
+            # if psutil.Process(main_binary_pid).status() == psutil.STATUS_RUNNING:
+            #     psutil.Process(main_binary_pid).kill()
+            
+            # proc_two = psutil.Process(attached_bin).kill()
 
-        if main_binary_pid != -1 or attached_bin != -1:
+        if obs_paths.has_option(section, 'extra-bin'):
+            extra_bin = obs_paths.get(section, 'extra-bin')
+            extra_bin_parameters = split_parameters(extra_bin)
+            for index in range(len(extra_bin_parameters)):
+                # for now [index][1] obsfucate option will not be used
+                extra_binary_pid = find_process_pid(extra_bin_parameters[index][0])
+                if extra_binary_pid != -1 and not is_extra_binary_running:
+                    is_extra_binary_running = True
+
+        if obs_paths.has_option(section, 'attached-bin'):
+            attached_bin = obs_paths.get(section, 'attached-bin')
+            attached_bin_parameters = split_parameters(attached_bin)
+            for index in range(len(attached_bin_parameters)):
+                # for now [index][2] obsfucate option will not be used
+                attached_binary_pid = find_process_pid(attached_bin_parameters[index][0], attached_bin_parameters[index][1])
+                if attached_binary_pid != -1 and not is_attached_binary_running:
+                    is_attached_binary_running = True
+        
+        
+        if is_main_binary_running or is_extra_binary_running or is_attached_binary_running:
             # show popup for user to exit program
+            # TODO need this popup on another thread to avoid locking this script
+            # or else user can ignore popup and processes will never be closed
             show_popup('Please save games, games will be exiting in 3 minutes')
-            time.sleep(180)
-            proc_one = psutil.Process(main_binary_pid).kill()
-            proc_two = psutil.Process(attached_bin).kill()
+            time.sleep(60)
+
+        ## Kill binaries here if they are still running
+        if is_main_binary_running:
+            main_binary_pid = find_process_pid(binary_name)
+            if main_binary_pid != -1:
+                psutil.Process(main_binary_pid).kill()
+                print(f'Main binary killed {main_binary_pid}')
+
+        if is_extra_binary_running:
+            for index in range(len(extra_bin_parameters)):
+                # for now [index][1] obsfucate option will not be used
+                extra_binary_pid = find_process_pid(extra_bin_parameters[index][0])
+                if extra_binary_pid != -1:
+                    psutil.Process(extra_binary_pid).kill()
+                    print('Extra binary killed')
+
+        if is_attached_binary_running:
+            for index in range(len(attached_bin_parameters)):
+                # for now [index][2] obsfucate option will not be used
+                attached_binary_pid = find_process_pid(attached_bin_parameters[index][0], attached_bin_parameters[index][1])
+                if attached_binary_pid != -1:
+                    psutil.Process(attached_binary_pid).kill()
+                    print(f'Attached binary killed {attached_binary_pid}')
 
         ################################
 
@@ -206,7 +275,7 @@ def restore_files():
         if obs_paths.has_option(section, 'random-shortcut-path'):
             shortcut_path = obs_paths.get(section, 'shortcut-path')
             random_shortcut_path = obs_paths.get(section, 'random-shortcut-path')
-            copy(random_shortcut_path, shortcut_path)
+            copy(random_shortcut_path, shortcut_path) # this copy does not trigger a write, and UI doesn't get updated
 
             if not os.path.exists(shortcut_path):
                 all_files_moved = False
@@ -221,6 +290,23 @@ def restore_files():
     if all_files_moved:
         rmtree(move_path)
 
+        # check if file exists and if it has section then read state
+        if os.path.exists('states.conf'):
+            states.read('states.conf')
+            if states.has_section('States'):
+                states.set('States', 'block-apps', 'False')
+                states.set('States', 'obsfucation-ran', 'False')
+                file = open('states.conf', 'w+')
+                states.write(file)
+                file.close()
+        else:
+            states.add_section('States')
+            states.set('States', 'block-apps', 'False')
+            states.set('States', 'obsfucation-ran', 'False')
+            file = open('states.conf', 'w+')
+            states.write(file)
+            file.close()
+
 
 def main():
     global num_letters, move_path, nested_levels, add_random_files_count, popup_shortcut
@@ -229,8 +315,6 @@ def main():
     parser.add_argument('--add-binary-path', help='Add path to a binary or executable')
     parser.add_argument('--remove-binary-path', help='Remove path to a binary or executable')
     parser.add_argument('--add-shortcut-path')
-    parser.add_argument('--add-extra-binaries', help='Extra processes spawned by main binary, i.e. \'binary|obsfuscate(bool)\',...')
-    parser.add_argument('--add-attached-binaries', help='Extra system processes spawned by main binary, i.e. \'binary|keyword|obsfuscate(bool)\',...')
     parser.add_argument('--run', action='store_true')
     parser.add_argument('--recover', action='store_true')
     args = parser.parse_args()
@@ -246,20 +330,14 @@ def main():
     set_server_permission_url = config.get('Settings', 'set-server-permission')
     use_server = config.getboolean('Settings', 'use-server')
     popup_shortcut = config.get('Settings', 'popup-shortcut')
+    breaks = config.get('Settings', 'breaks')
+    breaks_list = split_parameters(breaks)
 
     # cli arguments input getting messy :(
     # extra binaries and attached + breaks
     # might be better just as config parameters and not cli
-    if args.add_binary_path and args.add_extra_binaries and args.add_attached_binaries and args.add_shortcut_path:
-        add_file_to_config(args.add_binary_path, args.add_extra_binaries, args.add_attached_binaries, args.add_shortcut_path)
-    if args.add_binary_path and args.add_extra_binaries and args.add_attached_binaries:
-        add_file_to_config(args.add_binary_path, args.add_extra_binaries, args.add_attached_binaries, None)
-    if args.add_binary_path and args.add_attached_binaries:
-        add_file_to_config(args.add_binary_path, None, args.add_attached_binaries, None)
-    if args.add_binary_path and args.add_extra_binaries:
-        add_file_to_config(args.add_binary_path, args.add_extra_binaries, None, None)
     if args.add_binary_path and args.add_shortcut_path:
-        add_file_to_config(args.add_binary_path, None, None, args.add_shortcut_path)
+        add_file_to_config(args.add_binary_path, args.add_shortcut_path)
     elif args.add_binary_path:
         add_file_to_config(args.add_binary_path)
     elif args.remove_binary_path:
@@ -306,6 +384,13 @@ def main():
         now = datetime.datetime.now()
         current_time = int(now.strftime('%H%M'))
         server_permission = -1
+        on_break = False
+
+        # check if is break time already
+        if current_time >= start_time and current_time < stop_time:
+            for lunch_break in breaks_list:
+                on_break = are_you_on_break(current_time, lunch_break)
+                #print(f'On Break {on_break}')
 
         # only look at server inside school time, irgnore rest of the day
         if current_time >= start_time and current_time < stop_time and use_server:
@@ -315,9 +400,13 @@ def main():
             except requests.exceptions.RequestException:
                 print(f'Server not online, make sure is online or disable in config!')
 
-        if current_time >= start_time and current_time < stop_time and not obsfucation_ran or server_permission == 0 and not obsfucation_ran:
-            add_random_files()
+        # print(f'Obs Ran {obsfucation_ran} On Break {on_break}')
+        if (current_time >= start_time and current_time < stop_time and not obsfucation_ran or
+            current_time >= start_time and current_time < stop_time and not obsfucation_ran and not on_break or 
+            server_permission == 0 and not obsfucation_ran):
+
             obsfucate_files()
+            add_random_files()
             block_apps = True
             obsfucation_ran = True
             # update states
@@ -328,7 +417,10 @@ def main():
             states.write(file)
             file.close()
 
-        if current_time > start_time and current_time >= stop_time and obsfucation_ran or server_permission == 1 and obsfucation_ran:
+        if (current_time > start_time and current_time >= stop_time and obsfucation_ran or
+            current_time > start_time and current_time <= stop_time and obsfucation_ran and on_break or
+            server_permission == 1 and obsfucation_ran):
+
             block_apps = False
             restore_files()
             obsfucation_ran = False
@@ -345,7 +437,7 @@ def main():
 
         # only log if there is a change
         if block_apps != block_apps_state:
-            print(f'Block Apps {block_apps} {current_time}')
+            print(f'Block App State: {block_apps} Time: {current_time} Break Status: {on_break}')
 
         time.sleep(3) # a small time delay to avoid excessive server calls
         
