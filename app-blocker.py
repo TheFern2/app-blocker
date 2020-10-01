@@ -176,7 +176,7 @@ def obsfucate_files():
             # TODO need this popup on another thread to avoid locking this script
             # or else user can ignore popup and processes will never be closed
             show_popup('Please save games, games will be exiting in 3 minutes')
-            time.sleep(60)
+            time.sleep(180)
 
         ## Kill binaries here if they are still running
         if is_main_binary_running:
@@ -275,7 +275,7 @@ def restore_files():
         if obs_paths.has_option(section, 'random-shortcut-path'):
             shortcut_path = obs_paths.get(section, 'shortcut-path')
             random_shortcut_path = obs_paths.get(section, 'random-shortcut-path')
-            copy(random_shortcut_path, shortcut_path) # this copy does not trigger a write, and UI doesn't get updated
+            copy(random_shortcut_path, shortcut_path) # this copy does not trigger a write on linux, and UI doesn't get updated
 
             if not os.path.exists(shortcut_path):
                 all_files_moved = False
@@ -355,6 +355,8 @@ def main():
     stop_time = config.getint('Settings', 'stop-time')
     block_apps = False
     obsfucation_ran = False
+    #break_ran = False
+    on_break = False
 
     # check if file exists and if it has section then read state
     if os.path.exists('states.conf'):
@@ -384,7 +386,7 @@ def main():
         now = datetime.datetime.now()
         current_time = int(now.strftime('%H%M'))
         server_permission = -1
-        on_break = False
+        
 
         # check if is break time already
         if current_time >= start_time and current_time < stop_time:
@@ -401,8 +403,7 @@ def main():
                 print(f'Server not online, make sure is online or disable in config!')
 
         # print(f'Obs Ran {obsfucation_ran} On Break {on_break}')
-        if (current_time >= start_time and current_time < stop_time and not obsfucation_ran or
-            current_time >= start_time and current_time < stop_time and not obsfucation_ran and not on_break or 
+        if (current_time >= start_time and current_time < stop_time and not obsfucation_ran and not on_break or 
             server_permission == 0 and not obsfucation_ran):
 
             obsfucate_files()
@@ -437,7 +438,7 @@ def main():
 
         # only log if there is a change
         if block_apps != block_apps_state:
-            print(f'Block App State: {block_apps} Time: {current_time} Break Status: {on_break}')
+            print(f'Block App State: {block_apps}, Time: {current_time}, Break Status: {on_break}')
 
         time.sleep(3) # a small time delay to avoid excessive server calls
         
