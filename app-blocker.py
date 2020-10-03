@@ -7,14 +7,21 @@ import psutil
 from tkinter import Tk
 import tkinter.messagebox
 import threading
+from pathlib import Path
+
+if platform.system() == 'Windows':
+    import win32com.client
 
 # global variables
 num_letters = 1
 nested_levels = 10
 move_path = ''
 add_random_files_count = 0
-popup_shortcut = ''
 popup_path = ''
+show_icon = False
+home_path = str(Path.home()) # Users home path to store settings under .config/app-blocker/
+app_blocker_path = os.path.abspath(__file__) # might not need this
+app_blocker_dir = os.path.dirname(app_blocker_path) # might not need this
 obs_paths = configparser.ConfigParser()
 obs_paths.read('obs-paths.conf')
 states = configparser.ConfigParser()
@@ -67,6 +74,7 @@ def are_you_on_break(current_time, time_slot):
     else:
         return False
 
+
 # extra binaries will be special cases, so better to be added manually to config
 # def add_file_to_config(filename, extra_bin=None, attached_bin=None, shortcut_path=None):
 def add_file_to_config(filename, shortcut_path=None):
@@ -75,39 +83,32 @@ def add_file_to_config(filename, shortcut_path=None):
         section_name = os.path.basename(filename)
         if not obs_paths.has_section(section_name):
             obs_paths.add_section(section_name)
+
+        if obs_paths.has_section(section_name):
             obs_paths.set(section_name, 'full-path', filename)
             obs_paths.set(section_name, 'file-size-bytes', str(os.path.getsize(filename)))
 
-            if (shortcut_path and platform.system() != 'Darwin'):
+            if shortcut_path and platform.system() != 'Darwin':
                 if os.path.isfile(shortcut_path):
                     obs_paths.set(section_name, 'shortcut-path', shortcut_path)
 
-                    if(platform.system() == 'Linux'):
+                    if platform.system() == 'Linux':
                         desktop = configparser.ConfigParser()
                         desktop.read(shortcut_path)
                         if desktop.has_option('Desktop Entry', 'Exec'):
                             exec_path = desktop.get('Desktop Entry', 'Exec')
                             obs_paths.set(section_name, 'shortcut-target', exec_path)
 
+                    if platform.system() == 'Windows':
+                        shell = win32com.client.Dispatch('WScript.Shell')
+                        shortcut = shell.CreateShortcut(shortcut_path) # windows lnk
+                        obs_paths.set(section_name, 'shortcut-target', shortcut.TargetPath)
+                        
+
             file = open('obs-paths.conf', 'w+')
             obs_paths.write(file)
             file.close()
 
-        if (obs_paths.has_section(section_name) and shortcut_path and platform.system() != 'Darwin' and 
-            platform.system() == 'Linux'):
-            if os.path.isfile(shortcut_path):
-                obs_paths.set(section_name, 'shortcut-path', shortcut_path)
-
-                if(platform.system() == 'Linux'):
-                    desktop = configparser.ConfigParser()
-                    desktop.read(shortcut_path)
-                    if desktop.has_option('Desktop Entry', 'Exec'):
-                        exec_path = desktop.get('Desktop Entry', 'Exec')
-                        obs_paths.set(section_name, 'shortcut-target', exec_path)
-        
-                file = open('obs-paths.conf', 'w+')
-                obs_paths.write(file)
-                file.close()
     else:
         print('File does not exist')
 
@@ -147,29 +148,44 @@ def write_shebang(filename):
     os.rename(tempfile, filename)
 
 
-def point_to_popup(filename):
-    desktop = configparser.ConfigParser()
-    desktop.optionxform = str
-    desktop.read(filename)
-    if desktop.has_option('Desktop Entry', 'Exec'):
-        desktop.set('Desktop Entry', 'Exec', 'python3 ' + popup_path)
-        file = open(filename, 'w+')
-        desktop.write(file, space_around_delimiters=False)
-        file.close()
-        write_shebang(filename)
-        #print(f'point to popup func')
+def point_to_popup(filename, icon_path=None):
+    if platform.system() == 'Linux':
+        desktop = configparser.ConfigParser()
+        desktop.optionxform = str
+        desktop.read(filename)
+        if desktop.has_option('Desktop Entry', 'Exec'):
+            desktop.set('Desktop Entry', 'Exec', 'python3 ' + popup_path)
+            file = open(filename, 'w+')
+            desktop.write(file, space_around_delimiters=False)
+            file.close()
+            write_shebang(filename)
+    elif platform.system() == 'Windows':
+        shell = win32com.client.Dispatch('WScript.Shell')
+        shortcut = shell.CreateShortcut(filename)
+        #icon_path = shortcut.TargetPath
+        shortcut.TargetPath = popup_path
+        if show_icon:
+            shortcut.IconLocation = f'{icon_path},0'
+        shortcut.Save()
 
 def point_to_original(filename, shortcut_target):
-    desktop = configparser.ConfigParser()
-    desktop.optionxform = str
-    desktop.read(filename)
-    if desktop.has_option('Desktop Entry', 'Exec'):
-        desktop.set('Desktop Entry', 'Exec', shortcut_target)
-        file = open(filename, 'w+')
-        desktop.write(file, space_around_delimiters=False)
-        file.close()
-        write_shebang(filename)
-        #print(f'point to original func')
+    if platform.system() == 'Linux':
+        desktop = configparser.ConfigParser()
+        desktop.optionxform = str
+        desktop.read(filename)
+        if desktop.has_option('Desktop Entry', 'Exec'):
+            desktop.set('Desktop Entry', 'Exec', shortcut_target)
+            file = open(filename, 'w+')
+            desktop.write(file, space_around_delimiters=False)
+            file.close()
+            write_shebang(filename)
+    elif platform.system() == 'Windows':
+        shell = win32com.client.Dispatch('WScript.Shell')
+        shortcut = shell.CreateShortcut(filename)
+        shortcut.TargetPath = shortcut_target
+        if show_icon:
+            shortcut.IconLocation = f'{shortcut_target},0'
+        shortcut.Save()
 
 
 def obsfucate_files():
@@ -275,7 +291,20 @@ def obsfucate_files():
             os.makedirs(move_path)
         if not os.path.exists(move_path + random_path):
             os.makedirs(move_path + random_path)
-        copy(original_filename_path, move_path + random_path + random_filename)
+
+        if platform.system() == 'Windows':
+            extension_split = binary_name.split('.')
+            binary_extension = extension_split[-1]
+            try:
+                copy(original_filename_path, move_path + random_path + random_filename + '.' + binary_extension)
+            except IOError as e:
+                print(f'File not copied in obsfucate function\n {e}')
+
+        if platform.system() == 'Linux':
+            try:
+                copy(original_filename_path, move_path + random_path + random_filename)
+            except IOError as e:
+                print(f'File not copied in obsfucate function\n {e}')
 
         # shortcut if it exists, and not mac osx
         if obs_paths.has_option(section, 'shortcut-path') and platform.system() != 'Darwin':
@@ -286,25 +315,27 @@ def obsfucate_files():
             # need to work on mac later on
             if platform.system() == 'Linux':
                 point_to_popup(shortcut_path)
+            elif platform.system() == 'Windows':
+                # windows icon needs original icon on .exe
+                # might need to add an option to leave icon alone, then it will just show white
+                # knowing how to edit shortcut icon properties could lead to original exe
+                icon_path = move_path + random_path + random_filename + '.' + binary_extension
+                point_to_popup(shortcut_path, icon_path)
+                #print(move_path + random_path + random_filename + '.' + binary_extension)
             elif platform.system() == 'Darwin':
                 pass
-            elif platform.system() == 'Windows':
-                pass
-
-            # random_shortcut = get_random_filename()
-            # copy(shortcut_path, move_path + random_path + random_shortcut)
-            # # check if file was indeed copied and then delete
-            # if os.path.isfile(move_path + random_path + random_shortcut):
-            #     os.remove(shortcut_path)
-            #     copy(popup_shortcut, shortcut_path)
-            #     obs_paths.set(section, 'random-shortcut-path', move_path + random_path + random_shortcut)     
         
         # check if file was indeed copied and then delete
-        if os.path.isfile(move_path + random_path + random_filename):
+        if (os.path.isfile(move_path + random_path + random_filename) or
+            platform.system() == 'Windows' and os.path.isfile(move_path + random_path + random_filename + '.' + binary_extension)):
             os.remove(original_filename_path)
 
-            # update conf with random path
-            obs_paths.set(section, 'random-path', move_path + random_path + random_filename)
+            if platform.system() == 'Linux':
+                # update conf with random path
+                obs_paths.set(section, 'random-path', move_path + random_path + random_filename)
+            elif platform.system() == 'Windows':
+                obs_paths.set(section, 'random-path', move_path + random_path + random_filename + '.' + binary_extension)            
+
             file = open('obs-paths.conf', 'w+')
             obs_paths.write(file)
             file.close()
@@ -344,16 +375,10 @@ def restore_files():
     for section in obs_sections:
         original_filename_path = obs_paths.get(section, 'full-path')
         obfuscated_path = obs_paths.get(section, 'random-path')
-        copy(obfuscated_path, original_filename_path)
-
-        # shortcut if it exists
-        # if obs_paths.has_option(section, 'random-shortcut-path'):
-        #     shortcut_path = obs_paths.get(section, 'shortcut-path')
-        #     random_shortcut_path = obs_paths.get(section, 'random-shortcut-path')
-        #     copy(random_shortcut_path, shortcut_path) # this copy does not trigger a write on linux, and UI doesn't get updated
-
-        #     if not os.path.exists(shortcut_path):
-        #         all_files_moved = False
+        try:
+            copy(obfuscated_path, original_filename_path)
+        except IOError as e:
+            print(f'File not copied in restore function\n {e}')
 
         # shortcut if it exists
         if obs_paths.has_option(section, 'shortcut-path'):
@@ -363,11 +388,9 @@ def restore_files():
             # file.desktop file for linux
             # shortcut.lnk for windows
             # need to work on mac later on
-            if platform.system()  == 'Linux':
+            if platform.system()  == 'Linux' or platform.system()  == 'Windows':
                 point_to_original(shortcut_path, shortcut_target)
             elif platform.system()  == 'Darwin':
-                pass
-            elif platform.system()  == 'Windows':
                 pass
     
     # Delete all directories under move_path
@@ -399,7 +422,7 @@ def restore_files():
 
 
 def main():
-    global num_letters, move_path, nested_levels, add_random_files_count, popup_shortcut, popup_path
+    global num_letters, move_path, nested_levels, add_random_files_count, popup_path, show_icon
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--add-binary-path', help='Add path to a binary or executable')
@@ -419,8 +442,8 @@ def main():
     get_server_permission_url = config.get('Settings', 'get-server-permission')
     set_server_permission_url = config.get('Settings', 'set-server-permission')
     use_server = config.getboolean('Settings', 'use-server')
-    popup_shortcut = config.get('Settings', 'popup-shortcut')
     popup_path = config.get('Settings', 'popup-path')
+    show_icon = config.getboolean('Settings', 'show-icon')
     breaks = config.get('Settings', 'breaks')
     breaks_list = split_parameters(breaks)
 
@@ -495,7 +518,7 @@ def main():
 
         # print(f'Obs Ran {obsfucation_ran} On Break {on_break}')
         if (current_time >= start_time and current_time < stop_time and not obsfucation_ran and not on_break or 
-            server_permission == 0 and not obsfucation_ran):
+            server_permission == 1 and not obsfucation_ran):
 
             obsfucate_files()
             add_random_files()
@@ -511,7 +534,7 @@ def main():
 
         if (current_time > start_time and current_time >= stop_time and obsfucation_ran or
             current_time > start_time and current_time <= stop_time and obsfucation_ran and on_break or
-            server_permission == 1 and obsfucation_ran):
+            server_permission == 0 and obsfucation_ran):
 
             block_apps = False
             restore_files()
@@ -525,7 +548,7 @@ def main():
             file.close()
 
         if current_time == stop_time + 1 and use_server:
-            requests.post(f'http://{set_server_permission_url}0')
+            requests.post(f'http://{set_server_permission_url}1')
 
         # only log if there is a change
         if block_apps != block_apps_state:
