@@ -1,6 +1,6 @@
 # App-Blocker An application to hide pesky games during school time
 
-> NB: Backup binaries and shortcuts, as the app is going through beta and alpha testing. The app has good mechanisms so far to avoid overriding obsfuscated files, and recoving. Will add backup cli command to an external drive later on.
+> NB: Backup binaries and shortcuts, as the app is going through beta and alpha testing. The app has good mechanisms so far to avoid overriding obsfuscated files, and recovering. Will add backup cli command to an external drive later on.
 
 ## What does app-blocker do?
 
@@ -45,7 +45,7 @@ get-server-permission = 192.168.0.42:3012/permission/Cristy
 set-server-permission = 192.168.0.42:3012/permission/Cristy/
 show-icon = 0
 ```
-
+```
 add-random-files-count: how many random files it will add per binary
 start-time: start time to hide programs in 2400
 stop-time = stop time to hide programs in 2400
@@ -58,6 +58,8 @@ use-server = if you are using a web server to control the app
 get-server-permission = 192.168.0.42:3012/permission/Cristy => returns 0 or 1
 set-server-permission = 192.168.0.42:3012/permission/Cristy/ => sets 0 or 1
 show-icon = whether to show an icon on windows, see OS differences
+```
+
 
 ### Running commands
 
@@ -75,12 +77,54 @@ Windows double quotes needed if path contains spaces:
 app-blocker.py --add-binary-path "C:\Path to\File.exe" --add-shortcut-path "C:\Path to\file.lnk"
 ```
 
-## Screenshots
+## Special configuration
 
+> I've included a debugging script `process.py` to help find secondary binaries or attached binaries.
 
-## Extra Work to be aware of
+There are some things to be aware of, some applications launch/spawn other processes in certain ocassions. One example of this are games or applications that use java. In this ocassions killing the main binary pid isn't enough, and you'll need to search what are the other processes that need to killed.
 
-There are some things to be aware of, some applications launch/spawn other processes in certain ocassions. One example of this is games or applications that use java. In this ocassions killing the main binary pid isn't enough, and you'll need to search what are the other processes that need to killed.
+I'll talk about minecraft since is a game based on java. When you launch the minecraft launcher, that will be considered the main binary. Once you hit play, a java instance will launch a bunch of minecraft files. It is necessary to know which keyword to search for, or else you could be killing the wrong java instance if you have some other program based on java running.
+
+On Linux, you'll see the processes started for the launcher, then after you hit play, you'll see java with the ps -ef you can see all the files launched: (Note: If you aren't sure what processes your app is spawning, just to ps -e or tasklist on windows)
+
+```
+ps -e | grep mine
+ps -ef | grep mine
+```
+
+On Windows running the launcher will yield the following running tasks:
+
+```
+C:\Users\Default.DESKTOP-GU2MB4F>tasklist | findstr "Mine"
+MinecraftLauncher.exe         9732 Console                    1    111,652 K
+MinecraftLauncher.exe         7884 Console                    1     51,068 K
+MinecraftLauncher.exe         7576 Console                    1     76,120 K
+
+```
+
+Once you hit play then a java instance is started, by doing verbose switch we can see that javaw.exe is attached to minecraft:
+
+```
+C:\Users\Default.DESKTOP-GU2MB4F>tasklist /v | findstr "javaw"
+javaw.exe                     9748 Console                    1  1,548,640 K Running         DESKTOP-GU2MB4F\Default                                 0:00:27 Minecraft 1.16.3
+```
+
+## Adding to obs-path.conf
+
+Find the section for that particular binary
+
+Binary|keyword|obsfuscate
+```
+attached-bin = java|minecraft|0
+```
+> The last parameter isn't being used for now.
+
+If there is another processed needed to be killed then use:
+
+```
+extra-bin = java|0
+```
+> The last parameter isn't being used for now.
 
 ## OS Differences
 

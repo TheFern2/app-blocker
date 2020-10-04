@@ -248,7 +248,7 @@ def obsfucate_files():
             # or else user can ignore popup and processes will never be closed
 
             # start sleep on a separate thread
-            t1 = threading.Thread(target=time_delay, name='thread1', args= [90])
+            t1 = threading.Thread(target=time_delay, name='thread1', args= [180])
             t2 = threading.Thread(
                 target=show_popup, name='thread2', args= ['Please save games, games will be exiting in 3 minutes'])
             t1.start()
