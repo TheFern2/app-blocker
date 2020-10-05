@@ -122,7 +122,7 @@ def remove_file_from_config(filename):
         file.close()
 
 
-def find_process_pid(process_name, keyword=None):
+def find_process_pid(process_name, keyword=False):
     proc_found = False
     procs = {p.pid: p.info for p in psutil.process_iter(['pid','name'])}
     for proc in procs:
@@ -532,11 +532,11 @@ def main():
         states.write(file)
         file.close()
 
-    if args.run:
+    if args.run or args.run_once:
         print('Service started...')
         # do not obsfuscate if move_path folder exists and is not empty
         # check if file exists and if it has section then read state
-        if os.path.exists(move_path):
+        if os.path.exists(move_path) or os.path.exists(move_path) and not obsfucation_ran:
             print('Move path exists, please run recover command.')
             exit()
 
