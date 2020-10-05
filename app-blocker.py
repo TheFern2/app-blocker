@@ -474,6 +474,7 @@ def main():
     parser.add_argument('--remove-binary-path', help='Remove path to a binary or executable')
     parser.add_argument('--add-shortcut-path')
     parser.add_argument('--run', action='store_true')
+    parser.add_argument('--run-once', action='store_true')
     parser.add_argument('--recover', action='store_true')
     args = parser.parse_args()
 
@@ -540,7 +541,7 @@ def main():
             exit()
 
 
-    while args.run:
+    while args.run or args.run_once:
         block_apps_state = block_apps
         now = datetime.datetime.now()
         current_time = int(now.strftime('%H%M'))
@@ -599,6 +600,8 @@ def main():
         if block_apps != block_apps_state:
             print(f'Block App State: {block_apps}, Time: {current_time}, Break Status: {on_break}')
 
+        if args.run_once:
+            exit()
         time.sleep(3) # a small time delay to avoid excessive server calls
         
 
