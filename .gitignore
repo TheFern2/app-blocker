@@ -2,3 +2,4 @@ states.conf
 obs-paths.conf
 .vscode/*
 try-code/*
+configs/*
