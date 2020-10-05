@@ -188,10 +188,72 @@ def point_to_original(filename, shortcut_target):
         shortcut.Save()
 
 
-def obsfucate_files():
-    obs_paths.read('obs-paths.conf') # might be irrelevant call, called at the top
+def any_binaries_running(kill=False):
+    obs_paths.read('obs-paths.conf')
     obs_sections = obs_paths.sections()
-    # print(f"Number of sections in obs-paths {len(obs_sections)}")
+
+    # need to see if any binaries are running then give popup warning once
+    # repeated code need to clean this up
+    for section in obs_sections:
+        original_filename_path = obs_paths.get(section, 'full-path')
+        binary_name = os.path.basename(original_filename_path)
+        main_binary_pid = find_process_pid(binary_name)
+        is_main_binary_running = False
+        is_extra_binary_running = False
+        is_attached_binary_running = False
+        
+        if main_binary_pid != -1:
+            is_main_binary_running = True
+            if kill:
+                psutil.Process(main_binary_pid).kill()
+                is_main_binary_running = False
+                print(f'Main binary killed {main_binary_pid}')
+
+        if obs_paths.has_option(section, 'extra-bin'):
+            extra_bin = obs_paths.get(section, 'extra-bin')
+            extra_bin_parameters = split_parameters(extra_bin)
+            for index in range(len(extra_bin_parameters)):
+                # for now [index][1] obsfucate option will not be used
+                extra_binary_pid = find_process_pid(extra_bin_parameters[index][0])
+                if extra_binary_pid != -1 and kill:
+                    psutil.Process(extra_binary_pid).kill()
+                    print('Extra binary killed')
+                    is_extra_binary_running = False
+                elif extra_binary_pid != -1 and not is_extra_binary_running and not kill:
+                    is_extra_binary_running = True
+
+        if obs_paths.has_option(section, 'attached-bin'):
+            attached_bin = obs_paths.get(section, 'attached-bin')
+            attached_bin_parameters = split_parameters(attached_bin)
+            for index in range(len(attached_bin_parameters)):
+                # for now [index][2] obsfucate option will not be used
+                attached_binary_pid = find_process_pid(attached_bin_parameters[index][0], attached_bin_parameters[index][1])
+                if attached_binary_pid != -1 and kill:
+                    is_attached_binary_running = True
+                elif attached_binary_pid != -1 and not is_attached_binary_running and not kill:
+                    psutil.Process(attached_binary_pid).kill()
+                    print('Attached binary killed')
+                    is_attached_binary_running = False
+
+        if is_main_binary_running or is_extra_binary_running or is_attached_binary_running:
+            return True
+        else:
+            return False
+
+
+def obsfucate_files():
+
+    if any_binaries_running():
+        t1 = threading.Thread(target=time_delay, name='thread1', args= [180])
+        t2 = threading.Thread(
+            target=show_popup, name='thread2', args= ['Please save games, games will be exiting in 3 minutes'])
+        t1.start()
+        t2.start()
+        t1.join()
+
+    obs_paths.read('obs-paths.conf')
+    obs_sections = obs_paths.sections()
+
     for section in obs_sections:
         original_filename_path = obs_paths.get(section, 'full-path')
 
@@ -209,19 +271,8 @@ def obsfucate_files():
         # ['binary|obsfuscate 0 or 1(bool)] <- extra-bin
         # ['binary|keyword|obsfuscate(bool)] <- attached-bin
 
-        # test variable
-        #attached_bin = find_process_pid('java', 'minecraft')
-        
-        #print(f'Binary PID {main_binary_pid} Attached PID {attached_bin}')
-        ## Check if main binary, extra or attached binaries are running
-
         if main_binary_pid != -1:
-            is_main_binary_running = True
-            
-            # if psutil.Process(main_binary_pid).status() == psutil.STATUS_RUNNING:
-            #     psutil.Process(main_binary_pid).kill()
-            
-            # proc_two = psutil.Process(attached_bin).kill()
+            is_main_binary_running = True            
 
         if obs_paths.has_option(section, 'extra-bin'):
             extra_bin = obs_paths.get(section, 'extra-bin')
@@ -242,21 +293,15 @@ def obsfucate_files():
                     is_attached_binary_running = True
         
         
-        if is_main_binary_running or is_extra_binary_running or is_attached_binary_running:
-            # show popup for user to exit program
-            # TODO need this popup on another thread to avoid locking this script
-            # or else user can ignore popup and processes will never be closed
+        # if is_main_binary_running or is_extra_binary_running or is_attached_binary_running:
+        #     # start sleep on a separate thread
+        #     t1 = threading.Thread(target=time_delay, name='thread1', args= [180])
+        #     t2 = threading.Thread(
+        #         target=show_popup, name='thread2', args= ['Please save games, games will be exiting in 3 minutes'])
+        #     t1.start()
+        #     t2.start()
+        #     t1.join()
 
-            # start sleep on a separate thread
-            t1 = threading.Thread(target=time_delay, name='thread1', args= [180])
-            t2 = threading.Thread(
-                target=show_popup, name='thread2', args= ['Please save games, games will be exiting in 3 minutes'])
-            t1.start()
-            t2.start()
-            t1.join()
-
-            # show_popup('Please save games, games will be exiting in 3 minutes')
-            # time.sleep(180)
 
         ## Kill binaries here if they are still running
         if is_main_binary_running:
