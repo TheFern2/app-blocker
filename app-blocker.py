@@ -126,6 +126,8 @@ def find_process_pid(process_name, keyword=False):
     proc_found = False
     procs = {p.pid: p.info for p in psutil.process_iter(['pid','name'])}
     for proc in procs:
+        if process_name in procs[proc]['name'] == None:
+            continue
         if process_name in procs[proc]['name'] and not keyword:
             return procs[proc]['pid']
         if process_name in procs[proc]['name'] and keyword:
