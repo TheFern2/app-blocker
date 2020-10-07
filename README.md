@@ -22,7 +22,11 @@ On a high level overview the application takes a number of binary files, and opt
 
 ## Pre-flight checks
 
-Ensure the child account doesn't have admin rights, or sudo access. Or else it can render this app useless by reinstalling software.
+Ensure the child account doesn't have admin rights, or sudo access. Or else it can render this app useless by reinstalling software. You also need to make sure you child doesn't have access to all the files in this repo, or that they can't remove them. On Windows just put this repo under your admin account, go into security and make sure your child account doesn't have read or even write to avoid reading configs and code. A clever one can find a few bugs. On Linux the same put this repo under a root account or just check folder permissions too same concept as on Windows.
+
+- Make sure they can't uninstall your cronjob or task schedule
+- Make sure they can't install software
+- Make sure they can't delete this repo
 
 ## Initial Setup
 
@@ -116,6 +120,8 @@ Find the section for that particular binary
 Binary|keyword|obsfuscate
 ```
 attached-bin = java|minecraft|0
+or
+attached-bin = java|minecraft|0, some_bin|keyword|1
 ```
 > The last parameter isn't being used for now.
 
@@ -123,8 +129,65 @@ If there is another processed needed to be killed then use:
 
 ```
 extra-bin = java|0
+or
+attached-bin = java|0, some_bin|1
 ```
 > The last parameter isn't being used for now.
+
+
+## Testing before next step
+
+You'll want to make sure you test to make sure you have all dependencies installed, and no issues with your python install.
+Set start time, stop time, and move path at the very least for this test.
+
+```
+sudo python3 app-blocker --run
+Service started...
+Block App State: True, Time: 1844, Break Status: False
+Block App State: False, Time: 1845, Break Status: False
+```
+
+For initial testing make time a bit larger maybe 10min, then open up the app/apps you are trying to block to make sure they get killed if user decides not to listen to the popup.
+
+You can also add breaks like this:
+
+```
+breaks = 1720|1723
+or
+breaks = 1720|1723, 1500|1600, ...
+```
+
+## Running as a Cronjob on linux
+
+You'll want to run crontab -e as root
+
+```
+sudo crontab -e
+* * * * * cd /home/someUser/git/app-blocker/ && app-blocker.py --run-once
+```
+
+## Running as a scheduled task on Windows
+
+For windows is quite easy as well:
+
+Create a app-blocker.bat file, you can add a `pause` if something is failing:
+
+```
+cd C:\git\app-blocker
+python app-blocker.py --run-once
+```
+
+Open task scheduler, create task, give it a name:
+
+- Run whether user is logged on
+- Run with highest privileges
+- Hidden (Win 10)
+- Trigger, run every day, every minute
+- Action, start a program, browse to app-blocker.bat file
+- On Conditions I unchecked all checkboxes
+- Did not change Settings tab
+
+If the task is getting a return error, you must likely missed a step, or missing dependencies.
 
 ## OS Differences
 
